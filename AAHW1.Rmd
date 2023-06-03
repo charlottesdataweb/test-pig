@@ -1,0 +1,883 @@
+---
+title: "HW 1 - AA"
+author: "CJK"
+date: "2023-05-21"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Homework Assignment 1 for Advanced Analytics:
+
+It is important to note that the 'first' step below is simply the first one in an R script. Before beginning the assignment, I created a GitHub account, charlottesdataweb, and created a repository for this assignment called 'some-pig' - I downloaded the latest version of GitHub on my device and configured it on my device's terminal. I created a project linked to the repository, and the 'Git' tab is now available in my Environment pane. After a (very) long time of troubleshooting the process and test-running some short scripts, GitHub and R are now synced up (restarting R helped with the first hurdle...the second hurdle was getting the .sav file to work. I had to ensure it was also a downloaded file in my 'Git' tab, I initially thought it had to pull from the same folder as my project...took awhile, but we got there!)
+
+I am using GitKraken to stage changes to the markdown file and pull edits to my GitHub origin online. Now that R and GitHub have started a relationship and I understand the basics of how they work together, here's the actual code breakdown:
+
+The following are steps to perform an Exploratory Factor Analysis (EFA) on a dataset. The first steps involve gaining a broad understanding of the data, looking for anything concerning (like unusual values, missing data, etc), and examining the data to make sure it meets the key assumptions for an EFA. If the data meet the requirements, the next steps will be to gain some initial insights into what factor models may fit best with the data, to conduct the EFA and determine which factor model provides the best fit for the data, and to name the factors based on how they group the questions together. The last step will be a reliability analysis of each individual scale to determine if it meets the standard of reliability or if future steps should be taken to increase its reliability. 
+
+
+A. Step one is to set my seed. Setting the seed can offer some 'control' over the randomness of certain R functions. This would be especially useful if I was to perform a CFA right after my EFA. By using the same number, I can ensure I am working with the exact same split of training data (EFA) and test data (CFA), so there is no overlap 
+
+```{r}
+set.seed(69)
+knitr::opts_chunk$set(cache.extra = knitr::rand_seed)
+```
+
+B. Next step is to ensure all the needed packages are installed and called into the library. This should include the 'haven' package in order to properly import the .sav file (SPSS file) for this particular project.
+The 'pacman' package will install any packages on the list not already installed and call all packages into the library
+
+```{r}
+
+
+tryCatch(require(pacman),finally=utils:::install.packages(pkgs='pacman',repos='http://cran.r-project.org'));
+require(pacman)
+
+pacman::p_load(Hmisc,
+               checkmate,
+               corrr,
+               conflicted,
+               readxl,
+               dplyr,
+               tidyr,
+               ggplot2,
+               knitr,
+               evaluate,
+               iopsych,
+               psych,
+               quantreg,
+               lavaan,
+               xtable,
+               reshape2,
+               GPArotation,
+               Amelia,
+               expss,
+               multilevel,
+               janitor,
+               mice,
+               lmtest,
+               haven,
+               tidylog
+)
+
+#' <!-- #Loading from GitHub -->
+#' <!-- #pacman::p_load_current_gh("trinker/lexicon", "trinker/sentimentr") -->
+```
+Note: The last package should be 'tidylog' and it's optional but useful to provide a log of information and feedback about different 'diplyr' and 'tidyr' functions that are used!
+
+
+C. Now I'm all ready to load the dataset into R. I'm loading the data and calling the initial dataset 'hwdata'
+
+```{r}
+hwdata <- read_sav("~/Documents/DirectoryR/UGA IOMP 2023 AA/some-pig/HW 1/SAQ.sav")
+```
+
+D. Now that the dataset is loaded, I want to get some broad overview information about it so I know what I'm working with. The str() function gives me some basic information about the structure of the data: it tells me what the questions are, the range of the scale for each item, etc. 
+```{r}
+str(hwdata)
+```
+E. Now I know we're dealing with 23 questions, all on a scale of 1-5, from 'Strongly agree' to 'Strongly disagree' - my first question/point of clarification after viewing this information is if I should conclude from this that Strongly agree = 1 (vs. Strongly disagree = 1). Based on the way it's written, it looks like that's correct, but I will double check. This will be useful information to help with further interpretations.
+Also, most of the items had a 1-5 numerical label, but a few said that the options were 1, 2, 3, 4, 5, and 9. However, I didn't see any 9s when I looked at the data; however, I will examine more about this below.
+I also know that there are 8 factor scores pertaining to 2 different analyses. These may be useful later on, but for now, I plan to focus on the first 23 items. This means that I will likely need to build a variant of this dataset with only the first 23 questions.
+
+
+To help me better understand what the scale means (and why some of them have a '9' option), I took a look at the attributes of one of the questions (Q4) that had a '9' option.
+```{r}
+#making a scale label variable for question 4 to get info about the corresponding number/response
+scalelabels <- attributes(hwdata$Question_04)$labels
+print(scalelabels)
+```
+This helped a ton! Now I know that 1 = Strongly agree (often times it's the inverse, so that's good to know). I also know that 9 corresponds with not answered/NA. At a cursory glance, I didn't see any '9' responses so it looks like maybe those were already taken care of.
+
+I'm going to use the summary function to make sure all questions (1-23) have a max of 5 (and not 9).
+```{r}
+summary(hwdata)
+```
+The max is 5 across the board, so I have no 9s to worry about or need to edit.
+
+
+F. Now that I have a good overview of the questions and how to interpret their responses, I can glimpse the data and get column names. I'm just getting to know the dataset and looking for anything that may require further clarification or scrutiny.
+```{r}
+glimpse(hwdata)
+dput(colnames(hwdata))
+```
+
+
+G. At first glance from the 'glimpse' information, what I can see looks like normal values on the Likert scale of 1-5. Nothing weird so far. Still not sure what the 8 analysis numbers are.
+The column names don't provide too much information since they mostly just show the question #, but the questions are sequential with no number skipped from 1-2, and I've already examined the actual questions above using the str() function.
+
+
+H. And last step in examining the broad overview of information is looking for missing data. I can do this using the 'Amelia' package (too soon...)
+```{r}
+library(Amelia)
+
+missmap(hwdata)
+```
+I. This is great news (and rare). There's no missing data! Now I can continue with the process of determining if the data meets the required assumptions for performing an Exploratory Factor Analysis (EFA).
+
+
+1. Before performing an EFA, I will be evaluating the data to ensure it meets the necessary assumptions for an EFA. The data will be analyzed for the following:
+a. Outliers
+b. Linearity
+c. Correlation
+d. Sampling
+
+a. First, I will search for outliers by measuring the Mahalanobis distance. Mahalanobis distance is how far away the data point is from the overall distribution of the data. Are there any cases of extreme or unusual responses that may affect the results of an EFA down the line?
+```{r}
+# set.seed(69)
+# 
+# 
+# cutoff = qchisq(1-.001, ncol(hwdata))
+# mahal = mahalanobis(hwdata,
+#                     colMeans(hwdata),
+#                     cov(hwdata))
+# cutoff 
+# ncol(hwdata)
+# summary(mahal < cutoff)
+```
+I got an error that said the system is computationally singular. Then I remembered that the dataset had the survey responses, as well as the factor analysis scores. So I will build a new dataset with only the survey responses and rerun the Mahalanobis code with that to see if that will work.
+
+Also, I commented the chunk above because, when I tried to knit the markdown file, it wouldn't allow it to knit with this type of error. Lots of lessons to be learned!
+
+To create a new dataframe, I'm going to 'borrow' the code we learned from the dplyr package to deselect the last eight columns so I have a new dataset that is only survey responses. Note that, in the code below, I have a minus sign (-) before I concatenate c(). This creates a new data frame (called hwdataitems) that excludes the 8 analysis columns.
+
+```{r}
+library(dplyr)
+hwdataitems <- hwdata %>%
+    dplyr::select(-c(FAC1_1,FAC2_1,FAC3_1,FAC4_1,FAC1_2,FAC2_2,FAC3_2,FAC4_2))
+```
+
+
+That worked! I'm now going rerun the Mahalnobis with hwdataitems instead.
+```{r}
+set.seed(69)
+
+
+cutoff = qchisq(1-.001, ncol(hwdataitems))
+mahal = mahalanobis(hwdataitems,
+                    colMeans(hwdataitems),
+                    cov(hwdataitems))
+cutoff ##cutoff score
+ncol(hwdata) ##df
+summary(mahal < cutoff)
+```
+
+My output (97 FALSE) indicates 97 potential outliers, but I'll take a deeper look at them. The code below creates a new dataframe with the Mahalanobis distance values as a new column. The '24' in the code below denotes that it will be the 24th column in the new dataset. The column will be named 'mahal' - I had to specify the rename function from the dplyr package.
+
+```{r}
+hwdataitems_mahal <- hwdataitems %>%
+    bind_cols(mahal) %>%
+    dplyr::rename(mahal = `...24`)
+```
+
+Now I can look only at the 97 FALSE folks to examine their responses more closely. I will do this using the filter function. The filter function is present in several packages, so I will specify the dplyr package to perform the function (dplyr::filter)
+The arrange() function will sort them from highest to lowest
+```{r}
+mahal_out <- hwdataitems_mahal %>%
+    dplyr::filter(mahal > cutoff) %>%
+    arrange(desc(mahal)) 
+View(mahal_out)
+```
+
+I definitely see some extreme responses, as well as some unusual patterns of responses in the potential outliers. Some respondents selected almost exclusively 1s and 5s, and their selection patterns don't make a lot of sense. For instance, some have the same or similar responses to Q1 ('Statistics makes me cry') and to Q3 ('Standard deviations excite me') even though they are much more likely to be more opposing views. Or some selected opposing responses to Q8 ('I have never been good at mathematics') and Q11 ('I did badly at mathematics in school') even though intuitively, those responses should align similarly with one another. This makes me question if the outliers were responding carefully and consistently, and my inclination is to assume that they weren't.
+
+Because of this, it is probably best practice to remove the outliers. Additionally, it is noteworthy that the initial sample size (2571 respondents) can easily lend itself to removing almost 100 respondents. 
+I will use the filter function from dplyr once more, this time to create a dataframe that does not include the identified outliers.
+```{r}
+#bye bye outliers!
+nomoreout <- hwdataitems %>%
+    dplyr::filter(mahal < cutoff)
+View(nomoreout)
+```
+
+My new data set, nomoreout, has 2474 observations instead of the 2571. Now that I have identified and handled the outliers, I can move on to the other assumption checks before pressing on with an EFA.
+
+
+b. Next, I'm going to examine the additivity and linearity of the data. I will start with additivity. 
+Overall, it is the concept that the effects of the individual predictors are independent of each other, that their effects are additive (simply the sum of their individual effects) with no interactions and no high collinearity. 
+I can look at this using a correlation matrix that identifies if any items are too highly correlated with any other item(s). I will do this with the cor() and synum() function.
+I'm looking for any higher than usual correlations outside of the diagonal line of 1s (the key is provided in the output).
+```{r}
+
+correl = cor(nomoreout, use = "pairwise.complete.obs")
+
+symnum(correl)
+
+correl
+```
+Good news, I don't see anything that indicates too high correlations. There are a few .3 and .6 correlations, but nothing higher than that, so nothing to be concerned about here. We can assume an additive relationship.
+
+
+Checking for linearity has a few more steps. The first is to set up a fake regression analysis and standardize it to examine a histogram for a normality analysis.
+```{r}
+random = rchisq(nrow(nomoreout), 7)
+fake = lm(random~., data = nomoreout)
+standardized = rstudent(fake)
+fitted = scale(fake$fitted.values)
+```
+
+Now my 'fake' regression is all set up so I can view a histogram of the standardized results. I am looking for a normal distribution.
+```{r}
+
+hist(standardized)
+```
+We're looking approximately normally distributed. There is a bit of a positive skew, but it's slight, so I will move forward as is.
+
+Next, I'll test for heteroscedasticity with the Breusch-Pagan Test. Heteroscedasticity is unequal variance of the residuals. So if residuals were more dispersed at lower X-values but less dispersed at higher X-values, that would constistute heteroscedasticity. This is a violation of the assumption of equal variance, so we are hoping for homoscedasticity, or similar variance of residuals, within the model.
+```{r}
+
+bptest(fake)
+```
+
+Our test statistic is BP = 22.82, and our p-value = 0.472. Because p > .05, we fail to reject the null hypothesis. There is not sufficient evidence of the presence of heteroscedasticity in the model.
+
+To further ensure there is no problem with heteroscedasticity, I will also plot the residuals. Any pattern or shape, such as a U-shape, funnel shape, or fan shape in the plots, would indicate unequal variance. So I am hoping for random points, no pattern in the residual plot.
+
+```{r}
+plot(fitted,standardized)
+abline(0,0)
+abline(v = 0)
+```
+We are looking pretty random, but not perfect. There seems to be skewness going on with less disperssion below the 0 standardized line and greater dispersion above 0. However, there is not a fan shape or anything funky going on left to right, so we will move forward with what I'll call 'pretty good homogeneity' for now, especially since the results of the Breusch-Pagan test did not identify any heteroscedasticity.
+If a defined pattern emerged from the residual plots, I could transform my response variable, but for now I will press forward with the data as is.
+
+
+Now I can look at linearity with a Q-Q plot. A Q-Q plot is a plot that looks at two different samples to see if they are likely from the same population. Here we have a theoretical sample and actual sample. We are hoping for something highly resembling a straight line along the ab line to provide sufficient evidence of linearity.
+```{r}
+qqnorm(standardized)
+abline(0,1)
+```
+
+We've got a little bit of a curve at the high and low ends, but the line is roughly straight so I will move forward.
+
+Overall, there is presence of linearity here. Is it perfect? No. But it is likely sufficient enough to continue with the other assumptions for an EFA.
+
+
+c. Now I can look at correlation with Bartlett's test. I am hoping that the items in the data are correlated sufficiently with each other for factor analysis results to make sense. If they are not correlated enough, the below results will be non-significant (which would indicate a problem...our items would not be related enough for EFA results to make sense). It's worth noting that we have a very large sample size (2474 respondents) so very likely the results will be significant even if the inter-item correlations are smaller.
+```{r}
+cortest.bartlett(correl, n = nrow(nomoreout))
+```
+
+There is statistical significance, p > .05, so correlations are sufficient for EFA. I also know from the test for additivity that the items are not too correlated with each other to indicate problems with collinearity or redundancy. There is a relationship among the items, but they aren't too related either. I am ready for the final step to ensure the data is well-fitted for an EFA.
+
+
+d. Next, I will run the Kaiser–Meyer–Olkin (KMO) Measure of Sampling Adequacy Test. This helps determine if there is enough of a relationship among the variables in the data to run (and be able to trust the results of) a factor analysis. It does this by looking at the strength of the partial correlations of each variable. Are these variables (and the relationships among the variables) explained by underlying factors? Do they share enough common variance for EFA to make sense? Let's see.
+
+I am hoping for an overall MSA of .90 or higher.
+```{r}
+KMO(correl)
+```
+The overall MSA = .93. Great! There is solid sampling adequacy to perform an EFA.
+
+
+Now that all the assumption checks are covered, I'm going to rename the data set, nomoreout, to 'data' for ease of use and understanding.
+```{r}
+data <- nomoreout
+```
+
+2. Now I can take a look at the histograms of each item. I should have 23 lines of code, one for each question, and I will set breaks as 5 since they are all on a 5-point Likert scale.
+```{r}
+hist(data$Question_01, breaks = 5)
+hist(data$Question_02, breaks = 5)
+hist(data$Question_03, breaks = 5)
+hist(data$Question_04, breaks = 5)
+hist(data$Question_05, breaks = 5)
+hist(data$Question_06, breaks = 5)
+hist(data$Question_07, breaks = 5)
+hist(data$Question_08, breaks = 5)
+hist(data$Question_09, breaks = 5)
+hist(data$Question_10, breaks = 5)
+hist(data$Question_11, breaks = 5)
+hist(data$Question_12, breaks = 5)
+hist(data$Question_13, breaks = 5)
+hist(data$Question_14, breaks = 5)
+hist(data$Question_15, breaks = 5)
+hist(data$Question_16, breaks = 5)
+hist(data$Question_17, breaks = 5)
+hist(data$Question_18, breaks = 5)
+hist(data$Question_19, breaks = 5)
+hist(data$Question_20, breaks = 5)
+hist(data$Question_21, breaks = 5)
+hist(data$Question_22, breaks = 5)
+hist(data$Question_23, breaks = 5)
+```
+
+Now I will try the code that will show all the histograms in one plot to see if it appears in the markdown file.
+```{r}
+# par(mfrow =c(5,5),mar = c(3,4,3,4))
+# 
+# hist(data$Question_01, breaks = 5)
+# hist(data$Question_02, breaks = 5)
+# hist(data$Question_03, breaks = 5)
+# hist(data$Question_04, breaks = 5)
+# hist(data$Question_05, breaks = 5)
+# hist(data$Question_06, breaks = 5)
+# hist(data$Question_07, breaks = 5)
+# hist(data$Question_08, breaks = 5)
+# hist(data$Question_09, breaks = 5)
+# hist(data$Question_10, breaks = 5)
+# hist(data$Question_11, breaks = 5)
+# hist(data$Question_12, breaks = 5)
+# hist(data$Question_13, breaks = 5)
+# hist(data$Question_14, breaks = 5)
+# hist(data$Question_15, breaks = 5)
+# hist(data$Question_16, breaks = 5)
+# hist(data$Question_17, breaks = 5)
+# hist(data$Question_18, breaks = 5)
+# hist(data$Question_19, breaks = 5)
+# hist(data$Question_20, breaks = 5)
+# hist(data$Question_21, breaks = 5)
+# hist(data$Question_22, breaks = 5)
+# hist(data$Question_23, breaks = 5)
+```
+
+I had to adjust the margins with the mar = # syntax to get it to work. However, it only worked if the margins were set pretty small. Because of this, the question# is cut off from each, and it's a little difficult to interpret the histograms. Because of this, I also put this code in a blank script and got the plot to show up in my plots pane, and I saved that plot. I will include that too since it's bigger/easier to understand. Additionally, when I tried to knit the markdown file, the error or 'figure margins too large' would not let me knit. So, similar to the mahalanobis code getting an error, I have commented the code out jsut to keep track of what doesn't work but also allow the file to knit.
+
+Insights from the histograms are:
+
+It is important to remember that 1 corresponds to strongly agree (1 is high, 5 is low). This will be noteworthy as I look more at the item and scale analyses.
+
+It is noteworthy that there is a positive skew on quite a few items, with a majority of responses clustered around 1 and 2, and the response numbers seem to peter off as they get higher. This was a common trend I saw in the initial visualization, especially in the first 19 questions. 
+
+There does seem to be some relationships among the variables and nothing looks too unusual or out of place. Some items seem to be behaving in a similar fashion, which is good, but there also may be some items that are behaving too similarly - are they redundant? No major red flags yet on this end though.
+Another potential issue to stay mindful of is thatI could have some cross-loadings happen with such a high number of items that seem to be behaving in similar fashions, but I will know more when I cross that bridge. So far, so good.
+
+
+Ok, I'm all ready to start the EFA process now. First are some preliminary steps to prepare my data and split it into two subsets.
+
+I will set my seed first before dividing my data into my training (EFA) and testing (CFA) sets. I want to make sure the 'randomness' is the same 'randomness' for both testing and training analyses.
+```{r}
+set.seed(69)
+```
+
+
+Next, I will create an ID variable and move it to the front (so it's the first column). I can do this with a little help from the dplyr package.
+First step is to create the ID variable, then use the select function to move it before 'everything' so it's the first column. Then I can use colnames() to make sure it's first.
+```{r}
+
+data <- data %>% 
+    dplyr::mutate(ID = row_number())
+
+data <- data %>%
+    dplyr::select(ID, everything())
+
+colnames(data)
+```
+
+
+Now, I can split my data.
+
+3. I will split the data as 70/30. It is usually recommended to have a larger sample for the EFA (training), so I have chosen this uneven split that favors a bigger sample for the 'test' set. Also, since we practiced the 50/50 split in class, I wanted to try a different one that would more likely be applicable to best practices in the 'real world' - the split is also sometimes done as an 80/20 split. I opted for the slightly more conservative approach just to ensure enough observations remained for the testing set.
+```{r}
+#70 percent of the sample is now labeled with the 'training' value
+training <- sample(data$ID, length(data$ID)*0.7)
+
+#datatrain is now my new set that has the 70% above who are labeled as 'training' - and those not labeled as training are in the datatest set (with the %in% meaning in/contains and the ! meaning not in/does not contain)
+datatrain <- subset(data, ID %in% training)
+datatest <- subset(data, !(ID %in% training))
+```
+
+I can now check on my two sets of data and know that the split worked correctly right since datatrain has 1731 observations and datatest has 743 observations.
+```{r}
+View(datatrain)
+View(datatest)
+```
+
+
+
+Before I run my EFA, I will run a Parallel Analysis just to get an idea of roughly how many factors I might be looking at. I am not familiar with this set of questions (and they seem very hilarious, by the way), so I'm not really going in with any previous knowledge to pull from. Hopefully the Scree Plot will give me a good starting point.
+```{r}
+fa.parallel(data[c(2:24)])
+```
+
+Parallel analysis suggests that the number of factors =  6  and the number of components =  4 
+6 feels quite high for 23 items; it may be more like 4 or 5
+I will start with 4, and work from there.
+
+
+4. When selecting the method for my EFA, I opted for Maximum Likelihood (ML). ML is good for large datasets, it is well-suited when the assumptions for EFA have been met (as checked above), and it can handle unequal loadings within factors. I opted to not use Least Squares because it's more commonly used when there is no factor correlation and no large cross-loadings (both of which which may occur based on my views of the histograms). I also opted not to use Principal Axis (PA) because it can often underestimate factor loadings and may not provide an accurate view of the underlying factors. ML does operate best when assumptions of normality are met. My hope is that the data is not so  skewed that ML will inaccurate. If I run an initial EFA that seems to create relationships with variables that I don't think are logical, I may revisit this decision and see what PA will provide for me. However, ML is the most commonly used method, especially in large sets of data.
+
+Here's information on the naming scheme for the data as I move forward:
+
+* fa = Factor Analysis
+* ml = Maximum Likelihood (the method of factor analysis I am using; if I change to principal axis, this will b pa instead)
+* 4 = the number of factors I think are in the data (we will change this as we adjust the number of factors)
+* trn = the training data (as opposed to the test data)
+
+```{r}
+fa_ml_4_trn <- fa(data[c(2:24)], nfactors = 4, fm="ml")
+print(fa_ml_4_trn)
+
+```
+Now I can look at only the loadings .30 and higher
+```{r}
+print(fa_ml_4_trn$loadings, cutoff = .3)
+
+```
+
+There is a lot of cross-loading and A LOT of variables on the first factor, but right now, the structure is not easy to interpret. So I will rotate the factors first, then follow-up with my thoughts and interpretations.
+
+5. I opted for an oblique rotation because I saw some correlation between items and similar patterns in the histograms, so I am operating under the idea that my factors will likely be more correlated (if there was evidence they would be less correlated, I could opt for an orthogonal rotation). Per the recommendation of James Gaskin's EFA video, I chose a promax rotation to maximize interpretability.
+```{r}
+fa_ml_4_trn <- fa(data[c(2:24)], nfactors = 4, fm="ml", rotate="promax")
+print(fa_ml_4_trn)
+```
+And once more, I will look at loadings above .3
+```{r}
+print(fa_ml_4_trn$loadings, cutoff = .3)
+```
+
+This is better.
+The RMSEA = 0.046 (0.08 or less is preferred)
+The TLI = 0.93 (0.95 or higher is preferred, sometimes 0.90 is acceptable)
+
+Not bad, but we do still have some cross loadings, and if the TLI could be above the 0.95 threshold, that would definitely be the preferred structure. Let's run this again with a 5 factor model instead of 4.
+```{r}
+fa_ml_5_trn <- fa(data[c(2:24)], nfactors = 5, fm="ml", rotate="promax")
+
+print(fa_ml_5_trn)
+```
+
+And now, let's look only at loadings of .30 or higher
+```{r}
+print(fa_ml_5_trn$loadings, cutoff = .3)
+```
+
+
+The fit indices are improved, and we're down to just one cross-loading, but one factor only has 2 variables, one has 3 (right at the minimum requires number). I'm going to try principal axis and see if that looks any better.
+
+I think that, based on the small quantity of variables loaded onto two of the factors, a 6-factor model does not make sense to examine. I will stick to the 4 and 5 factor models and just see if the method changes the results significantly between ML and PA.
+```{r}
+fa_pa_4_trn <- fa(data[c(2:24)], nfactors = 4, fm="pa", rotate="promax")
+
+print(fa_pa_4_trn)
+```
+And look at loadings above .30
+```{r}
+print(fa_pa_4_trn$loadings, cutoff = .3)
+```
+
+
+Fit statistics are quite comparable to what they were for the ML 4-factor model. Last one, I'll look at PA 5-factor model.
+```{r}
+fa_pa_5_trn <- fa(data[c(2:24)], nfactors = 5, fm="pa", rotate="promax")
+
+print(fa_pa_5_trn)
+```
+And look at loadings above .30
+```{r}
+print(fa_pa_5_trn$loadings, cutoff = .3)
+```
+
+Once more, there is a factor with only two variables and one with three. I'm leaning toward a 4-factor model because of this, but I will still take a closer look at the four options I have run so far (4-factor ML, 5-factor ML, 4-factor PA, 5-factor PA). I may also remove some items if they seem to be cross-loading, acting unusually, only associated with low loadings overall, or if the question is way too different or way too redundant compared to the others.
+
+So now, I will input these four into one excel file to better examine the pros and cons of each.
+```{r}
+fa_ml_4faclds <- as.data.frame(round(unclass(fa_ml_4_trn$loadings), 3))
+
+fa_ml_4faclds
+
+```
+```{r}
+openxlsx::write.xlsx(fa_ml_4faclds,"~/Documents/DirectoryR/UGA IOMP 2023 AA/fa_ml_4faclds.xlsx")
+```
+
+
+```{r}
+fa_ml_5faclds <- as.data.frame(round(unclass(fa_ml_5_trn$loadings), 3))
+
+fa_ml_5faclds
+
+```
+```{r}
+openxlsx::write.xlsx(fa_ml_5faclds,"~/Documents/DirectoryR/UGA IOMP 2023 AA/fa_ml_5faclds.xlsx")
+```
+
+```{r}
+fa_pa_4faclds <- as.data.frame(round(unclass(fa_pa_4_trn$loadings), 3))
+
+fa_pa_4faclds
+
+```
+```{r}
+openxlsx::write.xlsx(fa_pa_4faclds,"~/Documents/DirectoryR/UGA IOMP 2023 AA/fa_pa_4faclds.xlsx")
+```
+f
+```{r}
+fa_pa_5faclds <- as.data.frame(round(unclass(fa_pa_5_trn$loadings), 3))
+
+fa_pa_5faclds
+
+```
+```{r}
+openxlsx::write.xlsx(fa_pa_5faclds,"~/Documents/DirectoryR/UGA IOMP 2023 AA/fa_pa_5faclds.xlsx")
+```
+
+Additionally, I copied the fit statistics from all four models to compare and contrast them more eaasily.
+
+
+
+The examinations of the four potential models were very useful to determine how to proceed. The first note was that the difference between ML and PA was very slight, so I chose to proceed with my initial selected method of ML. However, it was useful to see both methods and gain some context for how similar the results are.
+Also, the fit indices only improved slightly when moving from the 4-factor to the 5-factor model. The major issue with the 5-factor model is the factor that only has two items - this does not meet the standard of 3 items per factor. With this in mind, the ML method 4-factor model is likely what I will proceed with.
+
+The examinations of the 4-factor model still pointed to some potential problems. Namely:
+Q3 had cross-loadings on factors 3 and 4; additionally, it was the only negative loading in the entire model (sometimes the reverse scored items will act weirdly and be more challenging to interpret, so this may be why it is cross-loading). The loadings were also on the lower end (-0.498 and 0.329) relative to other loadings.
+Q14 had cross-loadings on factors 1 and 3; the loadings were relatively low as well (0.407, 0.325)
+Q15 did not have any factor loadings that reached the threshold of .30. 
+
+My plan is to examine those questions more carefully and see if any should be removed from the data.
+Q3 - Standard deviations excite me
+Q14 - Computers have minds of their own and deliberately go wrong whenever I use them
+Q15 - Computers are out to get me
+
+I think Q3 should be removed. It is the only reverse scored item, which makes it stand out and potentially behave unusually within the dataset. It is also cross-loading on two factors that already have a sufficient number of other factors.
+Q14 and Q15 are very similar. They both have the 'evil sentient computer' sentiment behind them. It seems that other factors are more strongly picking up frustration/ineptitude with technology (like Q7, for instance, 'All computers hate me'). Let's see what happens when they're both removed.
+```{r}
+datatrain_mod <- datatrain %>%
+    dplyr::select(-c(Question_03,Question_14,Question_15))
+```
+
+
+I'm rerunning the 4-factor ML method EFA with the three questions removed. I adjusted the column numbers accordingly in the code below.
+```{r}
+fa_ml_4_trn_MOD <- fa(datatrain_mod[c(2:21)], nfactors =4, fm="ml", rotate="promax") 
+
+print(fa_ml_4_trn_MOD)
+```
+Now once more, let's look at loaadings above .30
+```{r}
+print(fa_ml_4_trn_MOD$loadings, cutoff = .3)
+```
+
+Things are looking good! There is no cross-loading, there is no item missing a >.30 loading, and each factor still has at least 3 items. This is the simple structure that I will proceed with. 
+
+I'll talk about the fit statistics and related details later on as well. For now, I will explore what the dimensions of the scale look like to help shed some light on the underlying constructs of each.
+
+6. My final simple structure has 4 factors. Here are the names for each factor, followed by their corresponding items:
+
+Factor 1: Fear and Incompetence Toward Computers
+Q6 - I have little experience of computers
+Q7 - All computers hate me
+Q10 - Computers are useful only for playing games
+Q13 - I worry that I will cause irreparable damage because of my incompetence with computers
+Q18 - SPSS always crashes when I try to use it
+
+Factor 2: Fear and Incompetence Toward Mathematics
+Q8 - I have never been good at mathematics
+Q11 - I did badly at mathematics at school
+Q17 - I slip into a coma whenever I see an equation
+
+Factor 3: Fear and Incompetence Toward Statistics
+Q1 - Statistics makes me cry
+Q4 - I dream that Pearson is attacking me with correlation coefficients
+Q5 - I don't understand statistics
+Q12 - People try to tell you that SPSS makes statistics easier to understand but it doesn't
+Q16 - I weep openly at the mention of central tendency
+Q20 - I can't sleep for thoughts of eigenvectors
+Q21 - I wake up under my duvet thinking that I am trapped under a normal distribution
+
+Factor 4: Social Fear Toward Statistics  
+Q2 - My friends will think I'm stupid for not being able to cope with SPSS
+Q9 - My friends are better at statistics than me
+Q19 - Everybody looks at me when I use SPSS
+Q22 - My friends are better at SPSS than I am
+Q23 - If I'm good at statistics my friends will think I'm a nerd
+
+
+The factor names are a tad long, but I do feel that they accurately and pretty fully capture the underlying constructs of each. One way to condense them could be to have some overall description language before the entire list of factors, so it would read: The self-assessment questionnaire asks respondents about their fears and negative attitudes about: computers, mathematics, statistics, and social pressures around statistics. The titles as written above also do the job though!
+
+I also noticed how well the 4-factor model grouped the items together. The identification of each underlying factor was not difficult. This is a good sign that my simple structure is logical, interpretable, and accurate.
+
+Below is some information about the fit statistics for the final model. As a reminder, the final model is the 4-factor model, ML method, with the three items removed.
+
+7. The Tucker Lewis Index ranges from 0 to 1, and it provides information about the goodness of fit for a factor model. For the final model, the TLI = 0.927. The preferred standard for a good TLI is 0.95 or greater. However, a value of 0.90 or greater may be acceptable as well. It is noteworthy that the obtained value does not reach the preferred standard, but it is above 0.90 so it is considered acceptable. Although the TLI was higher in the 5 factor model, the results were problematic in other ways (they were not as easily interpretable, and one factor would not meet the criteria for the minimum number of items, only having two items loading high enough on that factor instead of the standard of 3 or more).
+
+8. The RMSEA Index is another method of evaluating the goodness of fit for a factor model. It ranges from 0 to infinity, with lower numbers indicating better fit. For the final model, the RMSEA = 0.049, 90%CI [0.045,0.053]. The preferred standard is less than 0.08. Some standards of practice even call for the RMSEA to be 0.05 or below. The good news is that our obtained RMSEA is lower than both.
+
+The conclusion from the TLI and RMSEA is that the 4-factor model is an acceptable fit for the data.
+
+
+9. Here is the information about my scales:
+I've chosen to name the overall scale 'Fear and Incompetence Toward Mathematics and Technology' (FITMAT) Scale
+Based on my factor information above, the scale is comprised of 4 subscales: 
+The 'Fear and Incompetence Toward Computers' (FITC) Scale
+The 'Fear and Incompetence Toward Mathematics' (FITM) Scale
+The 'Fear and Incompetence Toward Statistics' (FITS) Scale
+And the 'Social Fear Toward Statistics' (SFTS) Scale
+
+All four are scored on a scale of 1 (Strongly agree) to 5 (Strongly disagree).
+For the full list of questions associated with each scale, see the answer to question 6 above. I will pop the short list of what question numbers correspond with each factor just so I have this info readily available for the scale analysis below.
+Note that the first set of numbers is the Question_#, and the second set of numbers is the new column number due to the removal of three items. This short list will also help me keep the column numbers straight as I move forward.
+Factor 1 - FITC: 6, 7, 10, 13, 18 [corresponds to columns 5,6,9,12,15]
+Factor 2 - FITM: 8, 11, 17 [corresponds to columns 7,10,14]
+Factor 3 - FITS: 1, 4, 5, 12, 16, 20, 21 [corresponds to columns 1,3,4,11,13,17,18]
+Factor 4 - SFTS: 2, 9, 19, 22, 23 [corresponds to columns 2,8,16,19,20]
+
+10. The last step is some scale analysis, evaluating the reliability of each subscale by calculating Cronbach's alpha.
+To help with this, I will build a data set with the revised list of items only (making sure it doesn't include the 3 removed items and the ID number column).
+```{r}
+dataitems <- datatrain_mod %>%
+    dplyr::select(-c(ID))
+```
+
+
+
+Now I can run a quick check for any items that need reverse-scoring. I feel like I know the items well at this point, but I can double-check with the skimr package.
+```{r}
+library(skimr)
+
+skim(dataitems)
+```
+A few of the item histograms have less of a positive skew, namely 12 and 20, but when I evaluated the two questions, I do not believe they should be reverse scored -- I just think they happened to have less of a level of agreement than other similar items. The items in question were:
+Q12 - People try to tell you that SPSS makes statistics easier to understand but it doesn't
+Q20 - I can't sleep for thoughts of eigenvectors
+
+I'm mostly noting these so if something suspicious crops up in my reliability analyses, I have a good idea of where to start in the troubleshooting process.
+
+
+Now I can group them together by factors and make keys for my reliability analyses. For now, I will not reverse score anything.
+***Note that this corresponds to the column numbers above (not the question numbers)
+```{r}
+fitmat_keys_list <- list(fitc = c(5, 6, 9, 12, 15),
+                      fitm = c(7, 10, 14),
+                      fits = c(1, 3, 4, 11, 13, 17, 18),
+                      sfts = c(2, 8, 16, 19, 20)
+                      )
+
+fitmat_keys <- make.keys(dataitems, fitmat_keys_list, item.labels = colnames(dataitems))
+
+```
+
+
+And now I will score the items for each subscale and put them in their own dataframe.
+```{r}
+scores <- scoreItems(fitmat_keys, dataitems, impute = "none", 
+                         min = 1, max = 5, digits = 3)
+
+head(scores$scores)
+
+scores_df <- as.data.frame(scores$scores)
+```
+
+Now I'm going to divide the data into its four factors/subscales.
+I'm going to use the dplyr package with the select function (used above to create the final list of items).
+This time, instead of -c() I will use c() since the number of items to include is fewer than the number of items to exclude from each data frame
+```{r}
+
+FITC <- dataitems %>%
+    dplyr::select(c(Question_06,Question_07,Question_10,Question_13,Question_18))
+
+FITM <- dataitems %>%
+    dplyr::select(c(Question_08,Question_11,Question_17))
+
+FITS <- dataitems %>%
+    dplyr::select(c(Question_01,Question_04,Question_05,Question_12,Question_16,Question_20,Question_21))
+
+SFTS <- dataitems %>%
+    dplyr::select(c(Question_02,Question_09,Question_19,Question_22,Question_23))
+
+```
+
+
+Now I can start the process of evaluating each subscale and gaining information about it's reliability. I'll start with the FITC scale.
+
+At first, I did play around with going right to the psych::alpha functions, but I got an error message. So I will actually make the keys for each subscale one at a time. I will leave the code above since doing it in aggregate may come in handy later on if I can get the code to work, but for now I will override that with the code below.
+```{r}
+#fitmat_keys_list <- list(fitc=c(5, 6, 9, 12, 15)) 
+#fitmat_keys <- make.keys(FITC, fitmat_keys_list, item.labels = colnames(FITC))
+```
+
+Ok, I got an error there that says my subscript is out of bounds. After some sleuthing, I found that this means I'm calling for column numbers that don't exist (are 'out of the bounds' of my data). It turns out that these numbers do not need to match the column numbers from the main data set, instead they just need to be 1-X (with X being the number of items in that subscale). Lesson learned. Let's try that again. (Once more, I have commented out the error code so it will knit, but leaving it there to understand what went wrong and how to fix it).
+
+```{r}
+fitmat_keys_list <- list(fitc=c(1,2,3,4,5)) 
+fitmat_keys <- make.keys(FITC, fitmat_keys_list, item.labels = colnames(FITC))
+```
+
+
+Ok that worked. Now I can run the initial analysis for reliability with the alpha() function of the psych package. The syntax psych::alpha ensures that I'm using the alpha function from psych and not from ggplot2. 
+
+```{r}
+FITC_ALPHA <- psych::alpha(x = FITC[, abs(fitmat_keys_list$fitc)], keys = fitmat_keys)
+```
+
+And now I can make FITC_ALPHA into a dataframe and add some scale and item level statistics to get a full picture of its reliability.
+```{r}
+FITC_total <- round(as.data.frame(FITC_ALPHA$total), 3)
+FITC_alpha_drop <- round(as.data.frame(FITC_ALPHA$alpha.drop), 3)
+FITC_item_stat <- round(as.data.frame(FITC_ALPHA$item.stats), 3)
+
+FITC_ALPHA
+```
+
+Below are some notes for interpreting the above results, along with the corresponding values from the info above:
+
+Scale Info - 
+* raw_alpha is alpha based upon the covariance (0.79)
+* std.alpha is the standardized alpha based upon the correlations (0.79)
+* G6(smc) is Guttman's Lamda 6 reliability (0.76)
+* average_r is the average interitem correlation (0.43)
+* median_r is the median interitem correlation (0.46)
+
+Item Info - (numbers are in order of Questions: 6,7,10,13,18)
+* raw.r is the correlation of each item with the total score, not corrected for item overlap
+(0.79,0.77,0.57,0.74,0.80)
+* std.r is the correlation of each item with the total score (not corrected for item overlap) if the items were all standardized
+(0.77,0.75,0.61,0.750.79)
+* r.cor is item whole correlation corrected for item overlap and scale reliability
+(0.70,0.67,0.43,0.67,0.73)
+* r.drop is item whole correlation for this item against the scale without this item
+(0.62,0.60,0.39,0.59,0.65)
+
+The Cronbach's alpha for the FITC scale is 0.79. An acceptable alpha is 0.70 or higher (0.80 or higher is even better). So an alpha = 0.79 is considered adequate. Additionally, the r.drop values are all lower than the current alpha. This means that removing any of these items would result in a less reliable scale, so I feel confident that the best move is to keep all five items of the FITC scale.
+
+
+For FITM:
+```{r}
+fitmat_keys_list <- list(fitm=c(1,2,3)) 
+fitmat_keys <- make.keys(FITM, fitmat_keys_list, item.labels = colnames(FITM))
+```
+
+Note that I had to adjust the numbers to align with how many items are in the scale
+
+```{r}
+FITM_ALPHA <- psych::alpha(x = FITM[, abs(fitmat_keys_list$fitm)], keys = fitmat_keys)
+```
+
+Now I will repeat the process I did for FITC of creating a dataframe with scale and item level statistics.
+```{r}
+FITM_total <- round(as.data.frame(FITM_ALPHA$total), 3)
+FITM_alpha_drop <- round(as.data.frame(FITM_ALPHA$alpha.drop), 3)
+FITM_item_stat <- round(as.data.frame(FITM_ALPHA$item.stats), 3)
+
+FITM_ALPHA
+```
+
+Once more, here's some notable information from above:
+Scale Info - 
+* raw_alpha (0.82)
+* std.alpha (0.82)
+* G6(smc) (0.76)
+* average_r (0.61)
+* median_r (0.61)
+
+Item Info - (numbers are in order of Questions: 8,11,17)
+* raw.r
+(0.86,0.87,0.85)
+* std.r
+(0.86,0.87,0.85)
+* r.cor
+(0.75,0.77,0.73)
+* r.drop
+(0.68,0.69,0.66)
+
+The Cronbach's alpha of the FITM scale is 0.82. This meets the standard for an acceptable alpha (>=0.70), and it also meets the 'better' standard (>=0.80). Once more, this is good news. Additionally, the r.drop values indicate that no item removal would increase alpha, so all items of the FITM scale will remain. Also note that if one of the r.drop values would increase alpha, the decision to remove an item from this particular subscale would not be as cut and dry as others. Because this scale is already at the minimum accepted number of items (3), removal of an item would likely mean replacing that item and potentially require rerunning the EFA and reliability analyses. The good news is that this does not apply here.
+
+
+FITS is next:
+```{r}
+fitmat_keys_list <- list(fits=c(1,2,3,4,5,6,7)) 
+fitmat_keys <- make.keys(FITS, fitmat_keys_list, item.labels = colnames(FITS))
+```
+
+
+```{r}
+FITS_ALPHA <- psych::alpha(x = FITS[, abs(fitmat_keys_list$fits)], keys = fitmat_keys)
+
+```
+
+Now I will repeat the process I did for the first two scales, creating a dataframe with scale and item level statistics.
+```{r}
+FITS_total <- round(as.data.frame(FITS_ALPHA$total), 3)
+FITS_alpha_drop <- round(as.data.frame(FITS_ALPHA$alpha.drop), 3)
+FITS_item_stat <- round(as.data.frame(FITS_ALPHA$item.stats), 3)
+
+FITS_ALPHA
+```
+Scale Info - 
+* raw_alpha (0.80)
+* std.alpha (0.81)
+* G6(smc) (0.79)
+* average_r (0.37)
+* median_r (0.41)
+
+Item Info - (numbers are in order of Questions: 1,4,5,12,16,20,21)
+* raw.r
+(0.66,0.70,0.66,0.69,0.71,0.60,0.74)
+* std.r
+(0.68,0.70,0.66,0.69,0.72,0.57,0.73)
+* r.cor
+(0.61,0.64,0.57,0.61,0.66,0.47,0.68)
+* r.drop
+(0.54,0.57,0.51,0.55,0.59,0.41,0.62)
+
+The Cronbach's alpha for FITS is 0.80.  This meets the standard for an acceptable alpha (>=0.70), and it also meets the higher standard (>=0.80). Additionally, the r.drop values indicate that no item removal would increase alpha, so all items from the FITS scale will remain.
+
+
+Last subscale, SFTS:
+```{r}
+fitmat_keys_list <- list(sfts=c(1,2,3,4,5)) 
+fitmat_keys <- make.keys(SFTS, fitmat_keys_list, item.labels = colnames(SFTS))
+```
+
+
+```{r}
+SFTS_ALPHA <- psych::alpha(x = SFTS[, abs(fitmat_keys_list$sfts)], keys = fitmat_keys)
+```
+
+Now I will repeat the process I did for the first two scales, creating a dataframe with scale and item level statistics.
+```{r}
+SFTS_total <- round(as.data.frame(SFTS_ALPHA$total), 3)
+SFTS_alpha_drop <- round(as.data.frame(SFTS_ALPHA$alpha.drop), 3)
+SFTS_item_stat <- round(as.data.frame(SFTS_ALPHA$item.stats), 3)
+
+SFTS_ALPHA
+```
+Scale Info - 
+* raw_alpha (0.59)
+* std.alpha (0.59)
+* G6(smc) (0.54)
+* average_r (0.22)
+* median_r (0.23)
+
+Item Info - (numbers are in order of Questions: 2,9,19,22,23)
+* raw.r
+(0.58,0.71,0.59,0.64,0.54)
+* std.r
+(0.62,0.67,0.59,0.65,0.54)
+* r.cor
+(0.47,0.55,0.40,0.50,0.33)
+* r.drop
+(0.36,0.42,0.31,0.39,0.26)
+
+
+The Cronbach's alpha for SFTS is 0.59. This does not meet the standard for acceptable reliability since it is not greater than or equal to 0.70. Also, the r.drop values indicate that removing any of the five items will not lead to an increase in reliability. There are a few methods I could explore to increase the alpha of my SFTS scale.
+The first step is straightforward, which is simply to make sure that I have input everything correctly. I checked my work for errors and didn't see any in the code above. I double-checked my scales and the five items in the analysis align with the five items that loaded onto this factor.
+The next step is to reexamine the reverse-scoring information to see if any of the five items should be reverse scored. I reexamined the histograms, looked at the five items, and do not see adequate evidence that any should be reverse scored.
+
+
+The following potential steps would be more involved, with some requiring extensive work and re-analyzing of the data.
+I could redistribute the survey, as is, to another sample to see if the results are consistent with my above finding. Namely, does this SFTS scale consistently have inadequately low reliability, or is this current data set more anomalous? Is this data set reflective of the 'exception' or the 'rule'? If it's the exception based on other datasets, then I will take the above findings as an anomaly and move forward. If it aligns with other findings, then I can move to some of the steps below.
+I could add one or two well-constructed items to the subscale, and this often leads to increase in reliability. Unfortunately, this would also require that I go through a round of item writing, redistribute the questions, and repeat the full process of EFA and reliability analyses above. 
+I could rewrite any items that may be performing poorly to see if the rewrites would increase reliability. Once more, this would require redistributing the survey and re-running analyses. However, these modifications may make the questions more clear, or perhaps more applicable (could changing 'SPSS' to 'R' be more accurate based on what software people are using to run statistical analyses?)
+
+I could also reexamine my EFA options and see if a three-factor model would fit and increase the reliability of the subscales. However, I would need to ensure that my TLI is still high and my RMSEA is still low to indicate a good fit for a three factor model. Additionally, when examining the questions for the four factor model, I feel that the division of questions by factors makes logical sense, and I don't foresee my results having clear delineations of three factors fitting into three distinct categories/subscales. I could potentially remove a few items from this scale and see if this helps with the alignment of a three-factor model. 
+I could choose to remove the entire subscale. This would require repeating the EFA and subscale analyses. I would also need to ensure that the data collected from this subscale is not providing essential information. This is a major decision that I would not make lightly, and it is not one that I would recommend in a majority of cases. The scale is highly different from the other three scales, picking up on a social fear around statistics instead of a more internal/personal fear or anxiety around something. But I question if that is sufficient for deciding to remove the whole subscale. A better solution would be to find a way to remedy it.
+Lastly, I could leave the lower reliability scale in the measure, but I would need to fully document the reliability results and have a good reason for continuing to use a subscale that does not meet the standards for reliability. Once more, this is not a decision that I would recommend.
+In my summary below, I give final recommendations regarding methods to increase the reliability of the SFTS scale. These recommendations are out of the scope of this project, but they do point to valuable next steps for assessing and improving the subscale.
+
+
+
+In summation regarding the reliability analyses for the subscales, the FITC scale meets the adequate standard for reliability (0.79), and the FITM and FITS scales both meet the higher 'good' standard for reliability (0.82 and 0.80, respectively). The reliability results for the FITC, FITM, and FITS did not flag any items for potential removal.
+The 'problem child' is the SFTS scale; it did not reach the minimum acceptable standard for reliability (0.59), and the results did not flag any items for potential removal. From the potential options listed above regarding methods for increasing the reliability of SFTS, the three recommended paths forward would be:
+- Rerun the EFA using a three factor model, potentially removing additional items to ensure each factor captures a clear and delineated construct with appropriately high loadings and no cross loadings.
+- Readminister the measure as it currently stands to see if the results are consistent of inconsistent with the above findings.
+- Reword current items in the SFTS scale and add 1-2 new items to the scale as well. Readminister the measure and rerun the full EFA and reliability analyses above. This would require more work and effort, but the process of scale development and refinement is cyclical, and steps often need to be repeated to ensure that all scales and subscales are reliable and comprised of accurate, thorough, and well-performing items.
+
+Overall, the four-factor model appears to be a good fit for the 23 question scale. The factor analysis picked up on four distinct factors that grouped items accordingly. Three of the four scales emerged with adequate reliability, and one scale emerged with a problematic low Cronbach's alpha that will require further adjustments and evaluations.
